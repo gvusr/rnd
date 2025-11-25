@@ -1,0 +1,714 @@
+<!-- ParentExample.vue -->
+<template>
+  <div>
+    <h2>Final Table — Parent Example</h2>
+
+    <div style="margin-bottom:10px; display:flex; gap:8px; align-items:center;">
+      <button @click="resetAll">Reset Columns</button>
+      <button @click="highlightExample">Highlight Row 1 Col 1</button>
+      <button @click="clearSort">Clear Sort</button>
+      <label style="margin-left:12px;">
+        Show Pagination
+        <input type="checkbox" v-model="usePagination" />
+      </label>
+    </div>
+
+    <DataTable
+      :headers="headers"
+      :rows="rows"
+      :enableGlobalSearch="true"
+      :enableColumnSearch="true"
+      :cellEvents="cellEvents"
+      :rowEvents="rowEvents"
+      :showPagination="usePagination"
+      :defaultPerPage="5"
+      ref="table"
+      @sort-changed="onSortChanged"
+    >
+      <!-- Header slot: parent uses DataRow -> DataHeaderCell -->
+      <template #header>
+        <DataRow :rowIndex="-1" :rowData="{}">
+          <!-- Render header cells -->
+          <template v-for="(h, hi) in headers" :key="h.key">
+            <DataHeaderCell
+              :header="h"
+              :index="hi"
+              @header-drag-start="onHeaderDragStart"
+              @header-drag-move="onHeaderDragMove"
+              @header-drag-end="onHeaderDragEnd"
+              @header-remove="onHeaderRemove"
+              @header-sort="onHeaderSort"
+            />
+          </template>
+        </DataRow>
+      </template>
+
+      <!-- Column search slot (optional) - parent uses DataRow + DataCell to show inputs -->
+      <template #column-search="{ columnSearch, headers: slotHeaders }">
+        <DataRow :rowIndex="-2" :rowData="{}">
+          <template v-for="(h, i) in slotHeaders" :key="h.key">
+            <DataCell :rowIndex="-2" :colIndex="i" :colKey="h.key">
+              <input v-model="columnSearchLocal[h.key]" @input="onColumnSearchInput(h.key)" placeholder="Search column..." />
+            </DataCell>
+          </template>
+        </DataRow>
+      </template>
+
+      <!-- Body slot: we receive filteredRows and event objects -->
+      <template #default="{ filteredRows, rowEvents, cellEvents, dispatchTo, headers: slotHeaders }">
+        <!-- Render rows explicitly using DataRow and DataCell -->
+        <div>
+          <DataRow
+            v-for="(row, rIndex) in filteredRows"
+            :key="row[idKey]"
+            :rowIndex="rIndex"
+            :rowData="row"
+            :rowEvents="rowEvents"
+            :selectedRows="selectedIndices"
+            @row-click="onRowClick"
+            @row-select-toggle="onRowSelectToggle"
+            @row-received-message="onRowReceivedMessage"
+          >
+            <template v-for="(h, cIndex) in slotHeaders" :key="h.key">
+              <DataCell
+                :rowIndex="rIndex"
+                :colIndex="cIndex"
+                :colKey="h.key"
+                :value="row[h.key]"
+                :cellEvents="cellEvents"
+                :rowEvents="rowEvents"
+                @cell-event="onCellEvent"
+                @cell-row-event="onCellRowEvent"
+                @cell-received-message="onCellReceivedMessage"
+              />
+            </template>
+          </DataRow>
+        </div>
+      </template>
+    </DataTable>
+
+    <!-- Simple popup (Q1: A) -->
+    <div v-if="popup.show" class="popup-overlay" @click.self="closePopup">
+      <div class="popup">
+        <h3>Row Details</h3>
+        <pre>{{ popup.data }}</pre>
+        <button @click="closePopup">Close</button>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script>
+import DataTable from './DataTable.vue';
+import DataRow from './DataRow.vue';
+import DataCell from './DataCell.vue';
+import DataHeaderCell from './DataHeaderCell.vue';
+import bus from './eventBus.js';
+
+export default {
+  name: 'ParentExample',
+  components: { DataTable, DataRow, DataCell, DataHeaderCell },
+  data() {
+    return {
+      idKey: 'id',
+      headers: [
+        { label: 'ID', key: 'id' },
+        { label: 'Name', key: 'name' },
+        { label: 'City', key: 'city' },
+        { label: 'Score', key: 'score' },
+      ],
+      rows: [
+        { id: 1, name: 'Amit', city: 'Pune', score: 85 },
+        { id: 2, name: 'Sneha', city: 'Mumbai', score: 92 },
+        { id: 3, name: 'Rohit', city: 'Delhi', score: 77 },
+        { id: 4, name: 'Neha', city: 'Goa', score: 66 },
+        { id: 5, name: 'Sam', city: 'Nashik', score: 59 },
+      ],
+
+      // enable/disable features
+      usePagination: true,
+      // events config (DataTable -> passes to DataCell/DataRow)
+      cellEvents: { click: true },
+      rowEvents: { click: true },
+
+      // selection & popup state
+      selectedIndices: [],
+      popup: { show: false, data: null },
+
+      // column search local state to feed slot inputs
+      columnSearchLocal: {}
+    };
+  },
+  created() {
+    // init columnSearchLocal keys
+    this.headers.forEach(h => this.$set ? this.$set(this.columnSearchLocal, h.key, '') : (this.columnSearchLocal[h.key] = ''));
+    // example: listen to bus if needed (not required)
+    bus.on('header:remove', this.onHeaderRemoveBus);
+  },
+  unmounted() {
+    bus.off('header:remove', this.onHeaderRemoveBus);
+  },
+
+  methods: {
+    resetAll() {
+      // restore original headers and (optionally) rows - here headers were not mutated
+      // if you mutate headers array in runtime, implement a savedOriginalHeaders approach
+      // for demo we don't mutate headers array permanently
+      // If columns were removed, you might want to reassign original headers here.
+      // For this final code we assume headers remain consistent.
+      // Optionally: location.reload() for full reset; but we keep it non-destructive.
+      // Provide a small user feedback:
+      alert('Reset called — restore initial headers/rows if you mutated them.');
+    },
+
+    // Column drag - these handlers could be used to visually compute indicator; DataTable/full bus also handles.
+    onHeaderDragStart(payload) { /* optional visual handling */ },
+    onHeaderDragMove(payload) { /* optional visual handling */ },
+    onHeaderDragEnd(payload) { /* optional visual handling */ },
+
+    onHeaderRemove(payload) {
+      // remove column from headers and remove corresponding values from rows
+      const { index, key } = payload;
+      this.headers.splice(index, 1);
+      this.rows = this.rows.map(r => { const copy = { ...r }; delete copy[key]; return copy; });
+    },
+
+    onHeaderRemoveBus(payload) { this.onHeaderRemove(payload); },
+
+    // header sort clicked
+    onHeaderSort(payload) {
+      // DataHeaderCell emits header-sort via bus which DataTable listens to and updates sort.
+      // Parent receives sort-changed event separately if needed.
+      // For immediate parent-level sorting (if you want to mutate rows), you can handle it here.
+    },
+
+    // Column search slot input
+    onColumnSearchInput(key) {
+      // send value down to DataTable via dispatchTo? DataTable exposes columnSearch via slot props;
+      // in current design, slot gives columnSearch object by reference so parent input changes are seen by DataTable.
+      // But we wired the slot to send columnSearchLocal initially — to keep consistent, we emit a bus update:
+      bus.emit('parent:column-search', { key, value: this.columnSearchLocal[key] });
+    },
+
+    // ---------- Row & Cell event handlers ----------
+    onRowClick(payload) {
+      // open popup (single click)
+      this.popup.show = true;
+      this.popup.data = payload.rowData;
+    },
+    closePopup() { this.popup.show = false; this.popup.data = null; },
+
+    onRowSelectToggle(payload) {
+      const idx = payload.rowIndex;
+      const pos = this.selectedIndices.indexOf(idx);
+      if (pos === -1) this.selectedIndices.push(idx);
+      else this.selectedIndices.splice(pos, 1);
+    },
+
+    onCellEvent(payload) {
+      // called when DataCell emits a prioritized cell-event
+      console.log('Parent: cell-event', payload);
+      // example: if parent wants to instruct the table to highlight a cell in future:
+      // this.$refs.table.dispatchTo({ target: { rowIndex: payload.rowIndex, colIndex: payload.colIndex }, action: 'highlight', duration: 800 });
+    },
+    onCellRowEvent(payload) {
+      // fallback cell->row events
+      console.log('Parent: cell-row-event', payload);
+    },
+
+    onCellReceivedMessage(payload) {
+      console.log('Cell received a downward message:', payload);
+    },
+
+    onRowReceivedMessage(payload) {
+      console.log('Row got a downward message:', payload);
+    },
+
+    onRowSelectToggle(e) { this.onRowSelectToggle(e); },
+
+    // demo: instruct DataTable to dispatch to a particular cell
+    highlightExample() {
+      // highlight first displayed row and first column
+      this.$refs.table.dispatchTo({ target: { rowIndex: 0, colIndex: 0 }, action: 'highlight', duration: 900 });
+    },
+
+    onSortChanged(p) {
+      console.log('Sort changed (table):', p);
+    },
+
+    clearSort() {
+      // clear sort via bus call that DataTable listens to by calling header-sort with null
+      bus.emit('header:sort', { key: null });
+    }
+  }
+};
+</script>
+
+<style scoped>
+/* popup simple in-page div (Q1: A) */
+.popup-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.25); display:flex; align-items:center; justify-content:center;
+}
+.popup { background: #fff; padding:16px; border-radius:6px; min-width:300px; box-shadow:0 6px 20px rgba(0,0,0,0.2); }
+</style>
+
+
+<!-- DataTable.vue -->
+<template>
+  <div class="data-table-root">
+    <!-- Global search -->
+    <div v-if="enableGlobalSearch" class="global-search">
+      <input type="text" v-model="globalFilter" @input="onGlobalInput" placeholder="Search everything..." />
+    </div>
+
+    <!-- Header slot area (parent will render DataRow + DataHeaderCell here) -->
+    <div class="header-area">
+      <slot name="header"></slot>
+    </div>
+
+    <!-- Column-level search row (rendered by parent using DataRow + DataCell slot pattern or DataTable provides helper row via slot props) -->
+    <div v-if="enableColumnSearch" class="column-search-area">
+      <!-- Parent can also render inputs using header data; provide headerSearch object in slot props -->
+      <slot name="column-search" :columnSearch="columnSearch" :headers="headers"></slot>
+    </div>
+
+    <!-- Body content will be provided by parent via default slot. Provide helpful slot props -->
+    <div class="body-area">
+      <slot
+        :filteredRows="finalFilteredRows"
+        :rowEvents="rowEvents"
+        :cellEvents="cellEvents"
+        :dispatchTo="dispatchTo"
+        :headers="headers"
+      ></slot>
+    </div>
+
+    <!-- Pagination widget -->
+    <PaginationComponent
+      v-if="showPagination"
+      :currentPage="currentPage"
+      :perPage="perPage"
+      :totalRecords="finalFilteredRows.length"
+      @update:page="onPage"
+      @update:perPage="onPerPage"
+    />
+  </div>
+</template>
+
+<script>
+import PaginationComponent from './Pagination.vue';
+import bus from './eventBus.js';
+
+export default {
+  name: 'DataTable',
+  components: { PaginationComponent },
+  props: {
+    headers: { type: Array, required: true }, // [{label,key},...]
+    rows: { type: Array, required: true }, // array of objects
+    enableGlobalSearch: { type: Boolean, default: false },
+    enableColumnSearch: { type: Boolean, default: false },
+    cellEvents: { type: Object, default: () => ({ click: true }) },
+    rowEvents: { type: Object, default: () => ({ click: true }) },
+    showPagination: { type: Boolean, default: false },
+    defaultPerPage: { type: Number, default: 10 },
+    initialSort: { type: Object, default: () => ({ key: null, dir: null }) }
+  },
+  data() {
+    return {
+      globalFilter: '',
+      columnSearch: {},
+      currentPage: 1,
+      perPage: this.defaultPerPage,
+      sortKey: this.initialSort.key,
+      sortDir: this.initialSort.dir // 'asc'|'desc'|null
+    };
+  },
+  computed: {
+    // apply column filters
+    filteredByColumn() {
+      return this.rows.filter(row => {
+        return this.headers.every(h => {
+          const q = this.columnSearch[h.key];
+          if (!q) return true;
+          return String(row[h.key] ?? '').toLowerCase().includes(String(q).toLowerCase());
+        });
+      });
+    },
+    // apply global search after column filters
+    finalFilteredRows() {
+      let base = this.filteredByColumn;
+      if (this.globalFilter) {
+        const g = String(this.globalFilter).toLowerCase();
+        base = base.filter(r => Object.values(r).some(v => String(v ?? '').toLowerCase().includes(g)));
+      }
+      // apply sorting
+      return this.applySort(base);
+    }
+  },
+  created() {
+    // initialize columnSearch map
+    this.headers.forEach(h => { this.$set ? this.$set(this.columnSearch, h.key, '') : (this.columnSearch[h.key] = ''); });
+    // listen to header sort events from bus (DataHeaderCell emits)
+    bus.on('header:sort', this.onHeaderSort);
+  },
+  unmounted() {
+    bus.off('header:sort', this.onHeaderSort);
+  },
+  methods: {
+    onGlobalInput() {
+      this.currentPage = 1;
+      this.$emit('global-search', this.globalFilter);
+    },
+    onPage(p) { this.currentPage = p; this.$emit('page-change', p); },
+    onPerPage(pp) { this.perPage = pp; this.currentPage = 1; this.$emit('per-page-change', pp); },
+
+    applySort(rows) {
+      if (!this.sortKey || !this.sortDir) return rows;
+      const dir = this.sortDir === 'asc' ? 1 : -1;
+      return [...rows].sort((a, b) => {
+        const va = a[this.sortKey], vb = b[this.sortKey];
+        if (va == null && vb == null) return 0;
+        if (va == null) return -1 * dir;
+        if (vb == null) return 1 * dir;
+        if (!isNaN(Number(va)) && !isNaN(Number(vb))) return (Number(va) - Number(vb)) * dir;
+        return String(va).localeCompare(String(vb)) * dir;
+      });
+    },
+
+    onHeaderSort(payload) {
+      if (!payload || !payload.key) { this.sortKey = null; this.sortDir = null; bus.emit('table:set-sort-indicator', { key: null, dir: null }); this.$emit('sort-changed', { key: null, dir: null }); return; }
+      const k = payload.key;
+      if (this.sortKey !== k) { this.sortKey = k; this.sortDir = 'asc'; }
+      else { this.sortDir = this.sortDir === 'asc' ? 'desc' : (this.sortDir === 'desc' ? null : 'asc'); if (this.sortDir === null) this.sortKey = null; }
+      bus.emit('table:set-sort-indicator', { key: this.sortKey, dir: this.sortDir });
+      this.$emit('sort-changed', { key: this.sortKey, dir: this.sortDir });
+    },
+
+    // DOWNWARD API: dispatch message to rows/cells via bus
+    dispatchTo(payload) {
+      // payload: { target: { rowIndex?, colIndex?, colKey? }, action: 'highlight'|'setValue'|..., data }
+      bus.emit('table:dispatch', payload);
+    }
+  }
+};
+</script>
+
+<style scoped>
+.data-table-root { display:flex; flex-direction:column; gap:6px; }
+.global-search { text-align:right; padding:6px 0; }
+.column-search-area { display:block; }
+.header-area { display:block; }
+.body-area { display:block; }
+</style>
+
+
+<!-- DataRow.vue -->
+<template>
+  <div
+    class="dt-row"
+    :class="{ 'row-hover': isHover, 'row-selected': isSelected }"
+    @mouseenter="isHover = true"
+    @mouseleave="isHover = false"
+    @click="onRowClick"
+  >
+    <slot name="header"></slot> <!-- header-slot (if used) -->
+    <slot :rowData="rowData"></slot> <!-- body-slot (cells) -->
+  </div>
+</template>
+
+<script>
+import bus from './eventBus.js';
+export default {
+  name: 'DataRow',
+  props: {
+    rowIndex: { type: Number, required: true },
+    rowData: { type: Object, required: true },
+    rowEvents: { type: Object, default: () => ({}) },
+    selectedRows: { type: Array, default: () => [] }
+  },
+  data() { return { isHover: false, isSelected: false }; },
+  watch: {
+    selectedRows: { handler(v) { this.isSelected = v.includes(this.rowIndex); }, immediate: true }
+  },
+  methods: {
+    onRowClick(evt) {
+      // ctrl+click for selection
+      if (evt.ctrlKey) {
+        this.$emit('row-select-toggle', { rowIndex: this.rowIndex, rowData: this.rowData });
+        this.isSelected = !this.isSelected;
+        // notify via bus too
+        bus.emit('row:select-toggle', { rowIndex: this.rowIndex });
+        return;
+      }
+      // normal click => open popup (parent handles)
+      this.$emit('row-click', { rowIndex: this.rowIndex, rowData: this.rowData });
+    },
+    // get downward dispatch from table via bus
+    onTableDispatch(payload) {
+      if (!payload || !payload.target) return;
+      const t = payload.target;
+      const match = (t.rowIndex === undefined || t.rowIndex === this.rowIndex);
+      if (!match) return;
+      // if requested, forward full payload down to cells via bus
+      bus.emit('table:dispatch', payload);
+      // also emit local event so parent can take action
+      this.$emit('row-received-message', payload);
+    }
+  },
+  mounted() {
+    bus.on('table:dispatch', this.onTableDispatch);
+  },
+  unmounted() {
+    bus.off('table:dispatch', this.onTableDispatch);
+  }
+};
+</script>
+
+<style scoped>
+.dt-row { display:flex; flex-direction:row; border-bottom:1px solid #eee; align-items:stretch; }
+.row-hover { background:#f2f4f8; } /* Q3: very light gray */
+.row-selected { background:#dff0ff; } /* Q2: light blue */
+</style>
+
+
+<!-- DataHeaderCell.vue -->
+<template>
+  <div
+    class="dt-header-cell"
+    :draggable="true"
+    @dragstart="onDragStart"
+    @drag="onDragMove"
+    @dragend="onDragEnd"
+    @click.stop="onSortClick"
+  >
+    <div class="label">
+      <slot>{{ header.label }}</slot>
+      <span class="sort-ind" v-if="sortIndicator">{{ sortIndicator }}</span>
+    </div>
+
+    <button class="close" @click.stop="onRemove">×</button>
+  </div>
+</template>
+
+<script>
+import bus from './eventBus.js';
+export default {
+  name: 'DataHeaderCell',
+  props: {
+    header: { type: Object, required: true }, // { label, key }
+    index: { type: Number, required: true }
+  },
+  data() {
+    return { sortIndicator: '' };
+  },
+  methods: {
+    onDragStart(e) {
+      e.dataTransfer.effectAllowed = 'move';
+      this.$emit('header-drag-start', { index: this.index, key: this.header.key, clientX: e.clientX });
+      bus.emit('header:drag-start', { index: this.index, key: this.header.key, clientX: e.clientX });
+    },
+    onDragMove(e) {
+      this.$emit('header-drag-move', { index: this.index, key: this.header.key, clientX: e.clientX });
+      bus.emit('header:drag-move', { index: this.index, key: this.header.key, clientX: e.clientX });
+    },
+    onDragEnd(e) {
+      this.$emit('header-drag-end', { index: this.index, key: this.header.key, clientX: e.clientX });
+      bus.emit('header:drag-end', { index: this.index, key: this.header.key, clientX: e.clientX });
+    },
+    onRemove() {
+      this.$emit('header-remove', { index: this.index, key: this.header.key });
+      bus.emit('header:remove', { index: this.index, key: this.header.key });
+    },
+    onSortClick() {
+      this.$emit('header-sort', { key: this.header.key });
+      bus.emit('header:sort', { key: this.header.key });
+    },
+    setSortIndicator(payload) {
+      if (!payload || !payload.key) { this.sortIndicator = ''; return; }
+      this.sortIndicator = (payload.key === this.header.key && payload.dir) ? (payload.dir === 'asc' ? '▲' : '▼') : '';
+    }
+  },
+  mounted() {
+    bus.on('table:set-sort-indicator', this.setSortIndicator);
+  },
+  unmounted() {
+    bus.off('table:set-sort-indicator', this.setSortIndicator);
+  }
+};
+</script>
+
+<style scoped>
+.dt-header-cell {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding:8px 10px;
+  background:#f5f5f5;
+  border-right:1px solid #eee;
+  position:relative;
+  cursor:grab;
+  user-select:none;
+  flex:1;
+}
+.label { display:flex; align-items:center; gap:6px; }
+.sort-ind { font-size:12px; opacity:.85; }
+.close { background:transparent; border:none; color:#c33; font-weight:bold; cursor:pointer; }
+</style>
+
+
+<!-- DataCell.vue -->
+<template>
+  <div
+    class="dt-cell"
+    :class="{ 'cell-highlight': highlighted }"
+    @click="handleClick"
+    @mouseover="emitHover"
+  >
+    <slot>{{ display }}</slot>
+  </div>
+</template>
+
+<script>
+import bus from './eventBus.js';
+
+export default {
+  name: 'DataCell',
+  props: {
+    rowIndex: { type: Number, required: true },
+    colIndex: { type: Number, required: true },
+    colKey: { type: String, required: true },
+    value: {},
+    cellEvents: { type: Object, default: () => ({}) },
+    rowEvents: { type: Object, default: () => ({}) }
+  },
+  data() { return { highlighted: false }; },
+  computed: { display() { return this.value; } },
+  methods: {
+    handleClick(evt) {
+      const payload = { type: 'click', rowIndex: this.rowIndex, colIndex: this.colIndex, colKey: this.colKey, value: this.value, originalEvent: evt };
+      // Priority: cellEvents first
+      if (this.cellEvents && this.cellEvents.click) {
+        this.$emit('cell-event', payload);
+        bus.emit('cell:event', payload);
+      } else if (this.rowEvents && this.rowEvents.click) {
+        // fallback to row-level event
+        this.$emit('cell-row-event', payload);
+        bus.emit('row:event', payload);
+      } else {
+        // generic
+        this.$emit('cell-event', payload);
+        bus.emit('cell:event', payload);
+      }
+    },
+    emitHover() {
+      this.$emit('cell-hover', { rowIndex: this.rowIndex, colIndex: this.colIndex });
+    },
+    // receive table->dispatch messages
+    onTableDispatch(payload) {
+      if (!payload || !payload.target) return;
+      const t = payload.target;
+      const match = (t.rowIndex === undefined || t.rowIndex === this.rowIndex)
+        && (t.colIndex === undefined || t.colIndex === this.colIndex)
+        && (t.colKey === undefined || t.colKey === this.colKey);
+      if (!match) return;
+      if (payload.action === 'highlight') {
+        this.highlighted = true;
+        setTimeout(() => this.highlighted = false, payload.duration || 700);
+      } else {
+        // emit event to parent so parent can react (e.g., value set)
+        this.$emit('cell-received-message', payload);
+      }
+    }
+  },
+  mounted() {
+    bus.on('table:dispatch', this.onTableDispatch);
+  },
+  unmounted() {
+    bus.off('table:dispatch', this.onTableDispatch);
+  }
+};
+</script>
+
+<style scoped>
+.dt-cell { padding:8px 10px; border-right:1px solid #eee; flex:1; }
+.cell-highlight { box-shadow: 0 0 12px rgba(0,123,255,0.45); transform: translateY(-1px); transition: all .25s ease; }
+</style>
+
+
+<!-- Pagination.vue -->
+<template>
+  <div class="pagination-wrapper">
+    <label>
+      Per page
+      <select v-model.number="localPerPage" @change="onPerPageChange">
+        <option v-for="n in perPageOptions" :key="n" :value="n">{{ n }}</option>
+      </select>
+    </label>
+
+    <div class="page-controls">
+      <button @click="jumpBackward" :disabled="currentPage === 1">«</button>
+      <button @click="prevPage" :disabled="currentPage === 1">Prev</button>
+      <span class="info">{{ startRecord }} - {{ endRecord }} of {{ totalRecords }}</span>
+      <button @click="nextPage" :disabled="currentPage >= totalPages">Next</button>
+      <button @click="jumpForward" :disabled="currentPage >= totalPages">»</button>
+    </div>
+  </div>
+</template>
+
+<script>
+export default {
+  name: "PaginationComponent",
+  props: {
+    currentPage: { type: Number, default: 1 },
+    perPage: { type: Number, default: 10 },
+    totalRecords: { type: Number, default: 0 },
+    perPageOptions: { type: Array, default: () => [5, 10, 20, 50, 100] }
+  },
+  data() {
+    return { localPerPage: this.perPage, page: this.currentPage };
+  },
+  computed: {
+    totalPages() { return Math.max(1, Math.ceil(this.totalRecords / this.localPerPage)); },
+    startRecord() { return this.totalRecords === 0 ? 0 : (this.page - 1) * this.localPerPage + 1; },
+    endRecord() { const e = this.page * this.localPerPage; return e > this.totalRecords ? this.totalRecords : e; }
+  },
+  watch: {
+    currentPage(v) { this.page = v; },
+    perPage(v) { this.localPerPage = v; }
+  },
+  methods: {
+    prevPage() { if (this.page > 1) { this.page--; this.$emit('update:page', this.page); } },
+    nextPage() { if (this.page < this.totalPages) { this.page++; this.$emit('update:page', this.page); } },
+    jumpBackward() { this.page = Math.max(1, this.page - 5); this.$emit('update:page', this.page); },
+    jumpForward() { this.page = Math.min(this.totalPages, this.page + 5); this.$emit('update:page', this.page); },
+    onPerPageChange() { this.$emit('update:perPage', this.localPerPage); this.page = 1; this.$emit('update:page', 1); }
+  }
+};
+</script>
+
+<style scoped>
+.pagination-wrapper { display:flex; align-items:center; gap:12px; padding:10px 0; }
+.page-controls { display:flex; align-items:center; gap:8px; }
+.info { font-size:13px; }
+button { cursor:pointer; padding:6px 8px; }
+select { margin-left:6px; }
+</style>
+
+
+// eventBus.js
+const listeners = Object.create(null);
+
+export default {
+  on(event, fn) {
+    (listeners[event] || (listeners[event] = [])).push(fn);
+  },
+  off(event, fn) {
+    if (!listeners[event]) return;
+    listeners[event] = listeners[event].filter((f) => f !== fn);
+  },
+  emit(event, payload) {
+    (listeners[event] || []).slice().forEach((fn) => {
+      try { fn(payload); } catch (e) { /* swallow errors */ }
+    });
+  }
+};
