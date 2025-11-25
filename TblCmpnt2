@@ -1,0 +1,518 @@
+<template>
+  <div>
+    <button @click="resetColumns">Reset Columns</button>
+
+    <DataTable
+      ref="table"
+      :headers="headers"
+      :rows="rows"
+      enableGlobalSearch
+      enableColumnSearch
+      enablePagination
+    />
+  </div>
+</template>
+
+<script>
+import DataTable from "./DataTable.vue";
+
+export default {
+  components: { DataTable },
+
+  data() {
+    return {
+      headers: [
+        { key: "id", label: "ID" },
+        { key: "name", label: "Name" },
+        { key: "age", label: "Age" },
+        { key: "city", label: "City" },
+      ],
+
+      rows: [
+        { id: 1, name: "Alice", age: 22, city: "Pune" },
+        { id: 2, name: "Bob", age: 29, city: "Mumbai" },
+        { id: 3, name: "Charlie", age: 31, city: "Delhi" }
+      ],
+    };
+  },
+
+  methods: {
+    resetColumns() {
+      this.$refs.table.resetColumns();
+    },
+  },
+};
+</script>
+
+
+<template>
+  <div class="data-table">
+    
+    <!-- Global Search -->
+    <input
+      v-if="enableGlobalSearch"
+      v-model="globalQuery"
+      placeholder="Search..."
+      class="global-search"
+    />
+
+    <!-- HEADER ROW -->
+    <DataRow>
+      <DataHeaderCell
+        v-for="col in visibleColumns"
+        :key="col.key"
+        :columnKey="col.key"
+        :showIndicator="dragIndicatorKey === col.key"
+        @remove-column="removeColumn"
+        @column-sort="sortByColumn"
+        @column-drag-start="startDrag"
+        @column-drag-over="handleDragOver"
+        @column-drop="handleDrop"
+      >
+        {{ col.label }}
+      </DataHeaderCell>
+    </DataRow>
+
+    <!-- COLUMN SEARCH -->
+    <DataRow v-if="enableColumnSearch">
+      <DataCell v-for="col in visibleColumns" :key="col.key">
+        <input v-model="columnQuery[col.key]" placeholder="Search..." />
+      </DataCell>
+    </DataRow>
+
+    <!-- DATA ROWS -->
+    <DataRow
+      v-for="(row, i) in paginatedData"
+      :key="i"
+      :rowIndex="i"
+      :selectedRows="selectedRows"
+      @row-click="openPopup"
+      @row-select-toggle="toggleSelection"
+    >
+      <DataCell
+        v-for="col in visibleColumns"
+        :key="col.key"
+        :rowIndex="i"
+        :columnKey="col.key"
+        :cellData="row[col.key]"
+        @cell-click="bubbleCellClick"
+      >
+        {{ row[col.key] }}
+      </DataCell>
+    </DataRow>
+
+    <!-- PAGINATION -->
+    <PaginationComponent
+      v-if="enablePagination"
+      :total="filteredData.length"
+      :perPage="perPage"
+      @page-change="page = $event"
+      @per-page-change="perPage = $event"
+    />
+
+  </div>
+</template>
+
+<script>
+import DataRow from "./DataRow.vue";
+import DataCell from "./DataCell.vue";
+import DataHeaderCell from "./DataHeaderCell.vue";
+import PaginationComponent from "./Pagination.vue";
+
+export default {
+  name: "DataTable",
+  components: { DataRow, DataCell, DataHeaderCell, PaginationComponent },
+
+  props: {
+    headers: Array,
+    rows: Array,
+    enablePagination: Boolean,
+    enableGlobalSearch: Boolean,
+    enableColumnSearch: Boolean,
+  },
+
+  data() {
+    return {
+      originalColumns: [...this.headers],
+      visibleColumns: [...this.headers],
+      globalQuery: "",
+      columnQuery: {},
+      page: 1,
+      perPage: 5,
+      selectedRows: [],
+      dragSourceKey: null,
+      dragIndicatorKey: null,
+    };
+  },
+
+  computed: {
+    filteredData() {
+      let out = [...this.rows];
+
+      if (this.globalQuery) {
+        out = out.filter((r) =>
+          Object.values(r)
+            .join(" ")
+            .toLowerCase()
+            .includes(this.globalQuery.toLowerCase())
+        );
+      }
+
+      Object.keys(this.columnQuery).forEach((key) => {
+        if (this.columnQuery[key]) {
+          out = out.filter((r) =>
+            String(r[key])
+              .toLowerCase()
+              .includes(this.columnQuery[key].toLowerCase())
+          );
+        }
+      });
+
+      return out;
+    },
+
+    paginatedData() {
+      const start = (this.page - 1) * this.perPage;
+      return this.filteredData.slice(start, start + this.perPage);
+    },
+  },
+
+  methods: {
+    bubbleCellClick(payload) {
+      console.log("Cell event bubbled → DataTable:", payload);
+    },
+
+    openPopup(rowInfo) {
+      alert("Popup opened for row: " + rowInfo.rowIndex);
+    },
+
+    toggleSelection(rowIndex) {
+      if (this.selectedRows.includes(rowIndex)) {
+        this.selectedRows = this.selectedRows.filter((x) => x !== rowIndex);
+      } else {
+        this.selectedRows.push(rowIndex);
+      }
+    },
+
+    removeColumn(key) {
+      this.visibleColumns = this.visibleColumns.filter((c) => c.key !== key);
+    },
+
+    resetColumns() {
+      this.visibleColumns = [...this.originalColumns];
+    },
+
+    sortByColumn(colKey) {
+      this.rows.sort((a, b) => (a[colKey] > b[colKey] ? 1 : -1));
+    },
+
+    startDrag(colKey) {
+      this.dragSourceKey = colKey;
+    },
+
+    handleDragOver(colKey) {
+      this.dragIndicatorKey = colKey;
+    },
+
+    handleDrop(targetKey) {
+      const fromIndex = this.visibleColumns.findIndex(
+        (c) => c.key === this.dragSourceKey
+      );
+      const toIndex = this.visibleColumns.findIndex((c) => c.key === targetKey);
+
+      const updated = [...this.visibleColumns];
+      const [moved] = updated.splice(fromIndex, 1);
+      updated.splice(toIndex, 0, moved);
+
+      this.visibleColumns = updated;
+      this.dragIndicatorKey = null;
+    },
+  },
+};
+</script>
+
+<style>
+.data-table {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #ccc;
+}
+
+.global-search {
+  margin-bottom: 8px;
+  padding: 6px;
+}
+</style>
+
+
+<template>
+  <div class="pagination">
+    <select v-model.number="localPerPage" @change="changePerPage">
+      <option v-for="n in [5,10,20,50]" :key="n" :value="n">{{ n }}</option>
+    </select>
+
+    <button @click="prevPage">Prev</button>
+    <span>{{ currentPage }} / {{ totalPages }}</span>
+    <button @click="nextPage">Next</button>
+  </div>
+</template>
+
+<script>
+export default {
+  name: "PaginationComponent",
+  props: {
+    total: Number,
+    perPage: Number,
+  },
+  emits: ["page-change", "per-page-change"],
+  data() {
+    return {
+      currentPage: 1,
+      localPerPage: this.perPage,
+    };
+  },
+  computed: {
+    totalPages() {
+      return Math.ceil(this.total / this.localPerPage);
+    },
+  },
+  methods: {
+    prevPage() {
+      if (this.currentPage > 1) {
+        this.currentPage--;
+        this.$emit("page-change", this.currentPage);
+      }
+    },
+    nextPage() {
+      if (this.currentPage < this.totalPages) {
+        this.currentPage++;
+        this.$emit("page-change", this.currentPage);
+      }
+    },
+    changePerPage() {
+      this.$emit("per-page-change", this.localPerPage);
+      this.currentPage = 1;
+    },
+  },
+};
+</script>
+
+<style>
+.pagination {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+</style>
+
+
+<template>
+  <div
+    class="header-cell"
+    draggable="true"
+    @dragstart="dragStart"
+    @dragover="dragOver"
+    @drop="dropColumn"
+    @click="sortColumn"
+  >
+    <slot></slot>
+
+    <button class="close-btn" @click.stop="$emit('remove-column', columnKey)">
+      ×
+    </button>
+
+    <div
+      v-if="showIndicator"
+      class="drag-indicator"
+    ></div>
+  </div>
+</template>
+
+<script>
+export default {
+  name: "DataHeaderCell",
+  props: {
+    columnKey: String,
+    showIndicator: Boolean,
+  },
+  methods: {
+    dragStart(e) {
+      this.$emit("column-drag-start", this.columnKey);
+    },
+    dragOver(e) {
+      e.preventDefault();
+      this.$emit("column-drag-over", this.columnKey);
+    },
+    dropColumn() {
+      this.$emit("column-drop", this.columnKey);
+    },
+    sortColumn() {
+      this.$emit("column-sort", this.columnKey);
+    },
+  },
+};
+</script>
+
+<style>
+.header-cell {
+  padding: 8px;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  position: relative;
+  border-bottom: 1px solid #bbb;
+  user-select: none;
+  flex: 1;
+}
+
+.close-btn {
+  position: absolute;
+  right: 4px;
+  top: 4px;
+  cursor: pointer;
+}
+
+.drag-indicator {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: rgba(0, 102, 255, 0.7);
+  box-shadow: 0 0 8px rgba(0, 102, 255, 0.9);
+  animation: smoothIndicator 0.2s ease;
+}
+
+@keyframes smoothIndicator {
+  from {
+    opacity: 0;
+    transform: scaleY(0.2);
+  }
+  to {
+    opacity: 1;
+    transform: scaleY(1);
+  }
+}
+</style>
+
+
+<template>
+  <div
+    class="data-row"
+    :class="{
+      'row-hovered': isHovered,
+      'row-selected': isSelected
+    }"
+    @mouseover="onHover"
+    @mouseleave="onLeave"
+    @click="onRowClick"
+  >
+    <slot></slot>
+  </div>
+</template>
+
+<script>
+export default {
+  name: "DataRow",
+  props: {
+    rowIndex: Number,
+    rowEvents: Object,
+    selectedRows: Array,
+  },
+  data() {
+    return {
+      isHovered: false,
+      isSelected: false,
+    };
+  },
+  mounted() {
+    this.isSelected = this.selectedRows.includes(this.rowIndex);
+  },
+  watch: {
+    selectedRows() {
+      this.isSelected = this.selectedRows.includes(this.rowIndex);
+    },
+  },
+  methods: {
+    onHover() {
+      this.isHovered = true;
+    },
+    onLeave() {
+      this.isHovered = false;
+    },
+    onRowClick(event) {
+      if (event.ctrlKey) {
+        this.$emit("row-select-toggle", this.rowIndex);
+        return;
+      }
+
+      if (this.rowEvents?.onClick) {
+        this.rowEvents.onClick(this.rowIndex, event);
+      } else {
+        this.$emit("row-click", {
+          rowIndex: this.rowIndex,
+          originalEvent: event,
+        });
+      }
+    },
+  },
+};
+</script>
+
+<style>
+.data-row {
+  display: flex;
+  transition: background 0.2s ease;
+}
+.row-hovered {
+  background: #f8f8f8;
+}
+.row-selected {
+  background: #d0e6ff;
+}
+</style>
+
+
+<template>
+  <div
+    class="data-cell"
+    @click="handleCellClick"
+    @mouseover="$emit('cell-hover', cellData)"
+  >
+    <slot></slot>
+  </div>
+</template>
+
+<script>
+export default {
+  name: "DataCell",
+  props: {
+    rowIndex: Number,
+    columnKey: String,
+    cellData: null,
+    cellEvents: Object, // optional cell-level events
+  },
+  methods: {
+    handleCellClick(event) {
+      if (this.cellEvents?.onClick) {
+        this.cellEvents.onClick(this.cellData, this.rowIndex, event);
+      } else {
+        this.$emit("cell-click", {
+          rowIndex: this.rowIndex,
+          columnKey: this.columnKey,
+          value: this.cellData,
+          originalEvent: event,
+        });
+      }
+    },
+  },
+};
+</script>
+
+<style>
+.data-cell {
+  padding: 8px;
+  border-bottom: 1px solid #ddd;
+  flex: 1;
+}
+</style>
