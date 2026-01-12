@@ -1,0 +1,168 @@
+prnt
+<template>
+  <div>
+    <DataTable>
+      <Pagination :rows="tableData" :perPage="5">
+        <DataRow
+          v-for="(row, rowIndex) in pagedRows"
+          :key="rowIndex"
+          :row="row"
+        >
+          <DataCell
+            v-for="(value, key) in row"
+            :key="key"
+            :value="value"
+          />
+        </DataRow>
+      </Pagination>
+    </DataTable>
+  </div>
+</template>
+
+<script>
+import DataTable from "./DataTable.vue"
+import Pagination from "./Pagination.vue"
+import DataRow from "./DataRow.vue"
+import DataCell from "./DataCell.vue"
+
+export default {
+  components: { DataTable, Pagination, DataRow, DataCell },
+
+  data() {
+    return {
+      tableData: [
+        { name: "Amit", age: 32, city: "Delhi" },
+        { name: "Rahul", age: 28, city: "Mumbai" },
+        { name: "Neha", age: 25, city: "Pune" },
+        { name: "Riya", age: 30, city: "Jaipur" },
+        { name: "Vikram", age: 40, city: "Bhopal" },
+        { name: "Anita", age: 35, city: "Indore" }
+      ],
+      pagedRows: []
+    }
+  }
+}
+</script>
+
+
+DT
+<template>
+  <div class="datatable">
+    <slot />
+  </div>
+</template>
+
+<script>
+export default {
+  name: "DataTable"
+}
+</script>
+
+<style>
+.datatable {
+  border: 1px solid #ccc;
+  padding: 10px;
+}
+</style>
+
+Pgn
+<template>
+  <div>
+    <slot />
+
+    <div class="pagination">
+      <button @click="prev" :disabled="page === 1">Prev</button>
+      Page {{ page }} / {{ totalPages }}
+      <button @click="next" :disabled="page === totalPages">Next</button>
+    </div>
+  </div>
+</template>
+
+<script>
+export default {
+  props: {
+    rows: Array,
+    perPage: Number
+  },
+
+  data() {
+    return {
+      page: 1
+    }
+  },
+
+  computed: {
+    totalPages() {
+      return Math.ceil(this.rows.length / this.perPage)
+    },
+    pagedData() {
+      const start = (this.page - 1) * this.perPage
+      return this.rows.slice(start, start + this.perPage)
+    }
+  },
+
+  watch: {
+    pagedData: {
+      immediate: true,
+      handler(val) {
+        this.$parent.pagedRows = val   // push paginated rows back to Parent
+      }
+    }
+  },
+
+  methods: {
+    next() {
+      if (this.page < this.totalPages) this.page++
+    },
+    prev() {
+      if (this.page > 1) this.page--
+    }
+  }
+}
+</script>
+
+
+DR
+<template>
+  <div class="row">
+    <slot />
+  </div>
+</template>
+
+<script>
+export default {
+  name: "DataRow",
+  props: {
+    row: Object
+  }
+}
+</script>
+
+<style>
+.row {
+  display: flex;
+  border-bottom: 1px solid #ddd;
+}
+</style>
+
+
+DC
+<template>
+  <div class="cell">{{ value }}</div>
+</template>
+
+<script>
+export default {
+  name: "DataCell",
+  props: {
+    value: [String, Number]
+  }
+}
+</script>
+
+<style>
+.cell {
+  flex: 1;
+  padding: 6px;
+}
+</style>
