@@ -1,0 +1,219 @@
+p.vue
+<template>
+  <DataTable>
+
+    <Pagination :data="rows">
+
+      <template #default="{ filterData }">
+
+        <!-- Header -->
+        <DataRow>
+          <HeaderCell
+            v-for="h in headers"
+            :key="h"
+            :value="h"
+          />
+        </DataRow>
+
+        <!-- Optional Row -->
+        <DataRow>
+          <Cell value="Toolbar row" />
+        </DataRow>
+
+        <!-- Body -->
+        <DataRow
+          v-for="(row, ri) in filterData"
+          :key="ri"
+        >
+          <Cell
+            v-for="h in headers"
+            :key="h"
+            :value="row[h]"
+          />
+        </DataRow>
+
+        <!-- Footer -->
+        <DataRow>
+          <Cell value="Footer row" />
+        </DataRow>
+
+      </template>
+
+    </Pagination>
+
+  </DataTable>
+</template>
+
+<script>
+import DataTable from "./DataTable.vue";
+import Pagination from "./Pagination.vue";
+import DataRow from "./DataRow.vue";
+import HeaderCell from "./HeaderCell.vue";
+import Cell from "./Cell.vue";
+
+export default {
+  components: {
+    DataTable,
+    Pagination,
+    DataRow,
+    HeaderCell,
+    Cell
+  },
+
+  data() {
+    return {
+      headers: ["ID", "Name", "Age"],
+      rows: [
+        { ID: 1, Name: "John", Age: 30 },
+        { ID: 2, Name: "Mira", Age: 25 },
+        { ID: 3, Name: "Ravi", Age: 28 },
+        { ID: 4, Name: "Asha", Age: 33 }
+      ]
+    };
+  }
+};
+</script>
+
+cellvue
+<template>
+  <div class="cell">
+    {{ value }}
+  </div>
+</template>
+
+<script>
+export default {
+  name: "Cell",
+  props: { value: [String, Number] }
+};
+</script>
+
+<style scoped>
+.cell {
+  flex: 1;
+  padding: 10px;
+  border-right: 1px solid #eee;
+}
+</style>
+
+hcellvue
+<template>
+  <div class="header-cell">
+    {{ value }}
+  </div>
+</template>
+
+<script>
+export default {
+  name: "HeaderCell",
+  props: { value: [String, Number] }
+};
+</script>
+
+<style scoped>
+.header-cell {
+  flex: 1;
+  padding: 10px;
+  background: #f3f3f3;
+  font-weight: bold;
+  border-right: 1px solid #ccc;
+}
+</style>
+
+drowuve
+<template>
+  <div class="row">
+    <slot />
+  </div>
+</template>
+
+<script>
+export default {
+  name: "DataRow"
+};
+</script>
+
+<style scoped>
+.row {
+  display: flex;
+  border-bottom: 1px solid #ddd;
+}
+</style>
+
+pgnvue
+<template>
+  <div>
+
+    <slot :filterData="pagedData" />
+
+    <div class="pager">
+      <button @click="prev" :disabled="page === 1">Prev</button>
+      {{ page }}
+      <button @click="next" :disabled="end >= data.length">Next</button>
+    </div>
+
+  </div>
+</template>
+
+<script>
+export default {
+  name: "Pagination",
+
+  props: {
+    data: Array,
+    pageSize: { default: 4 }
+  },
+
+  data() {
+    return { page: 1 };
+  },
+
+  computed: {
+    start() {
+      return (this.page - 1) * this.pageSize;
+    },
+    end() {
+      return this.start + this.pageSize;
+    },
+    pagedData() {
+      return this.data.slice(this.start, this.end);
+    }
+  },
+
+  methods: {
+    next() {
+      this.page++;
+    },
+    prev() {
+      this.page--;
+    }
+  }
+};
+</script>
+
+<style scoped>
+.pager {
+  padding: 10px;
+  text-align: center;
+}
+</style>
+
+dtvue
+<template>
+  <div class="datatable">
+    <slot />
+  </div>
+</template>
+
+<script>
+export default {
+  name: "DataTable"
+};
+</script>
+
+<style scoped>
+.datatable {
+  border: 1px solid #ccc;
+  width: 100%;
+}
+</style>
